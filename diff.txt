@@ -1,0 +1,65 @@
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index 3124158..2f76efe 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -370,7 +370,8 @@
+ 446	common	landlock_restrict_self	sys_landlock_restrict_self
+ 447	common	memfd_secret		sys_memfd_secret
+ 448	common	process_mrelease	sys_process_mrelease
+-
++449	common	writer			sys_writer
++450	common	reader			sys_reader
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+ # in x32 as compared to native x86_64.  These syscalls have numbers 512-547.
+@@ -415,4 +416,3 @@
+ 547	x32	pwritev2		compat_sys_pwritev64v2
+ # This is the end of the legacy x32 range.  Numbers 548 and above are
+ # not special and are not to be used for x32-specific syscalls.
+-548 	common	printmsg		sys_printmsg
+diff --git a/kernel/sys.c b/kernel/sys.c
+index 8fdac0d..5e4d43d 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -200,6 +200,41 @@ static int set_one_prio(struct task_struct *p, int niceval, int error)
+ 	return error;
+ }
+ 
++char* q;
++int c;
++
++static DECLARE_RWSEM(r_on);
++
++void f_en(char* ch)
++{
++	down_write(&r_on);
++	copy_from_user((void*)q,(void __user*)ch,sizeof(q));
++	up_write(&r_on);
++}
++
++void f_de(char* ch)
++{
++	down_read(&r_on);
++	copy_to_user((void __user*) ch, (void*)q,sizeof(q));
++	up_read(&r_on);
++}
++
++SYSCALL_DEFINE1(writer, char*, ch)
++{
++	c = 8;
++	q = (char*)kmalloc(8,GFP_KERNEL);
++	f_en(ch);
++	return 0;
++}
++
++SYSCALL_DEFINE1(reader, char*, ch)
++{
++	f_de(ch);
++	kfree(q);
++	return 0;
++}
++
++
+ SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+ {
+ 	struct task_struct *g, *p;
